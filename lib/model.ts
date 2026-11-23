@@ -361,6 +361,18 @@ function chainOf(p: SnapshotProtocol): string {
   return p.chains.length > 0 ? p.chains[0]! : 'its main chain';
 }
 
+/** A rough gas price for one transaction on a chain, in dollars, from the chain's own name. */
+function gasFor(chain: string): number {
+  const c = chain.toLowerCase();
+  if (c.includes('ethereum')) return 8;
+  if (c.includes('solana')) return 0.01;
+  if (c.includes('arbitrum') || c.includes('optimism') || c.includes('base') || c.includes('zksync') || c.includes('blast') || c.includes('scroll')) return 0.5;
+  if (c.includes('bnb') || c.includes('bsc')) return 0.3;
+  if (c.includes('polygon')) return 0.1;
+  if (c.includes('avalanche')) return 0.5;
+  return 2;
+}
+
 /** How much capital one farm position needs, from the protocol's own TVL. */
 function capitalFor(p: SnapshotProtocol): number {
   if (p.tvl_usd >= 5_000_000_000) return 250;
@@ -396,19 +408,41 @@ function actionFor(p: SnapshotProtocol, capital: number, chain: string): string 
   return `Deposit $${capital} of USDC into ${name} on ${chain} and keep the position open.`;
 }
 
+/** The category's weekly qualifying action, in the words a farmer can follow. */
+function weeklyActionFor(p: SnapshotProtocol, capital: number, chain: string): string {
+  const c = (p.category ?? '').toLowerCase();
+  const name = p.name;
+  const small = Math.max(10, Math.round(capital / 5));
+  if (c.includes('lend') || c.includes('cdp') || c.includes('collateral')) return `Repay a little of the loan or add $${small} of collateral on ${name}.`;
+  if (c.includes('dex') || c.includes('yield') || c.includes('leveraged farm')) return `Swap $${small} through ${name}'s main pool on ${chain}.`;
+  if (c.includes('bridge')) return `Bridge $${small} through ${name} again and use the funds in its app.`;
+  if (c.includes('staking') || c.includes('restak')) return `Check the staking rewards on ${name} and restake what it paid.`;
+  if (c.includes('perpetual') || c.includes('derivative')) return `Open and close one small hedge on ${name} with $${small} of margin.`;
+  if (c.includes('prediction')) return `Place one more small market position on ${name}.`;
+  if (c.includes('curator') || c.includes('allocator')) return `Add $${small} to the ${name} vault or rebalance it.`;
+  return `Make one qualifying action on ${name}, such as a deposit, a borrow, a swap or a vote.`;
+}
+
 /**
- * A protocol's farm plan: seven steps, each an action with a cost and a time. The plan is derived
+ * A protocol's farm plan: eight steps, each an action with a cost and a time. The plan is derived
  * from the protocol's own record (category, chains, TVL, age), never from a hand-written list of names.
+ * Gas is priced from the protocol's own chain, and the last step totals the whole plan.
  */
 export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
   const chain = chainOf(p);
   const capital = capitalFor(p);
   const hold = holdDaysFor(age);
   const action = actionFor(p, capital, chain);
+  const gas = gasFor(chain);
+  const weekly = weeklyActionFor(p, capital, chain);
+  const weeks = Math.max(1, Math.round(hold / 7));
+  const txs = 2 + weeks + 1;
+  const totalGas = Math.round(gas * txs * 100) / 100;
+  const gasText = totalGas >= 1 ? `$${totalGas}` : `$${totalGas.toFixed(2)}`;
   return [
     {
       text: `Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.`,
-      cost: 'under $3 of gas for the first transaction',
+      cost: `about $${gas} of gas for the first transaction`,
       time: '5 minutes',
     },
     {
@@ -418,12 +452,12 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
     },
     {
       text: action,
-      cost: `$${capital} of capital and about $${capital >= 150 ? 8 : 4} of gas`,
+      cost: `$${capital} of capital and about $${gas} of gas`,
       time: '15 minutes to set up',
     },
     {
-      text: `Make one qualifying action each week, such as a deposit, a borrow, a swap or a vote.`,
-      cost: 'about $2 of gas a week',
+      text: weekly,
+      cost: `about $${gas} of gas a week`,
       time: '10 minutes a week',
     },
     {
@@ -440,6 +474,11 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
       text: `Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.`,
       cost: 'nothing but the log',
       time: '5 minutes',
+    },
+    {
+      text: `Plan total: $${capital} of capital, ${txs} transactions, over ${hold} days.`,
+      cost: `about ${gasText} of gas in total`,
+      time: `${hold} days all in`,
     },
   ];
 }

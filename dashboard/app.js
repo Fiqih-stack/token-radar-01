@@ -70,6 +70,29 @@
   // The farm plan is the same derivation main.ts writes to board.json: category, chains, TVL and age
   // decide the action, the capital, the hold and every cost and time. No name is special-cased.
   function chainOf(p) { return p.chains && p.chains.length > 0 ? p.chains[0] : 'its main chain'; }
+  function gasFor(chain) {
+    var c = (chain || '').toLowerCase();
+    if (c.indexOf('ethereum') >= 0) return 8;
+    if (c.indexOf('solana') >= 0) return 0.01;
+    if (c.indexOf('arbitrum') >= 0 || c.indexOf('optimism') >= 0 || c.indexOf('base') >= 0 || c.indexOf('zksync') >= 0 || c.indexOf('blast') >= 0 || c.indexOf('scroll') >= 0) return 0.5;
+    if (c.indexOf('bnb') >= 0 || c.indexOf('bsc') >= 0) return 0.3;
+    if (c.indexOf('polygon') >= 0) return 0.1;
+    if (c.indexOf('avalanche') >= 0) return 0.5;
+    return 2;
+  }
+  function weeklyActionFor(p, capital, chain) {
+    var c = (p.category || '').toLowerCase();
+    var name = p.name;
+    var small = Math.max(10, Math.round(capital / 5));
+    if (c.indexOf('lend') >= 0 || c.indexOf('cdp') >= 0 || c.indexOf('collateral') >= 0) return 'Repay a little of the loan or add $' + small + ' of collateral on ' + name + '.';
+    if (c.indexOf('dex') >= 0 || c.indexOf('yield') >= 0 || c.indexOf('leveraged farm') >= 0) return 'Swap $' + small + " through " + name + "'s main pool on " + chain + '.';
+    if (c.indexOf('bridge') >= 0) return 'Bridge $' + small + ' through ' + name + ' again and use the funds in its app.';
+    if (c.indexOf('staking') >= 0 || c.indexOf('restak') >= 0) return 'Check the staking rewards on ' + name + ' and restake what it paid.';
+    if (c.indexOf('perpetual') >= 0 || c.indexOf('derivative') >= 0) return 'Open and close one small hedge on ' + name + ' with $' + small + ' of margin.';
+    if (c.indexOf('prediction') >= 0) return 'Place one more small market position on ' + name + '.';
+    if (c.indexOf('curator') >= 0 || c.indexOf('allocator') >= 0) return 'Add $' + small + ' to the ' + name + ' vault or rebalance it.';
+    return 'Make one qualifying action on ' + name + ', such as a deposit, a borrow, a swap or a vote.';
+  }
   function capitalFor(p) {
     if (p.tvl_usd >= 5e9) return 250;
     if (p.tvl_usd >= 1e9) return 150;
@@ -109,14 +132,20 @@
     var chain = chainOf(p);
     var capital = capitalFor(p);
     var hold = holdDaysFor(p.age_days);
+    var gas = gasFor(chain);
+    var weeks = Math.max(1, Math.round(hold / 7));
+    var txs = 2 + weeks + 1;
+    var totalGas = Math.round(gas * txs * 100) / 100;
+    var gasText = totalGas >= 1 ? '$' + totalGas : '$' + totalGas.toFixed(2);
     return [
-      { text: 'Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.', cost: 'under $3 of gas for the first transaction', time: '5 minutes' },
+      { text: 'Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.', cost: 'about $' + gas + ' of gas for the first transaction', time: '5 minutes' },
       { text: "Open " + p.name + "'s own points or rewards page first, and only farm it if it publishes one.", cost: 'nothing to check', time: '10 minutes' },
-      { text: actionFor(p, capital, chain), cost: '$' + capital + ' of capital and about $' + (capital >= 150 ? 8 : 4) + ' of gas', time: '15 minutes to set up' },
-      { text: 'Make one qualifying action each week, such as a deposit, a borrow, a swap or a vote.', cost: 'about $2 of gas a week', time: '10 minutes a week' },
+      { text: actionFor(p, capital, chain), cost: '$' + capital + ' of capital and about $' + gas + ' of gas', time: '15 minutes to set up' },
+      { text: weeklyActionFor(p, capital, chain), cost: 'about $' + gas + ' of gas a week', time: '10 minutes a week' },
       { text: 'Hold the position for at least ' + hold + ' days so the activity is counted in more than one snapshot.', cost: 'the $' + capital + ' stays in the position', time: hold + ' days' },
       { text: "Before you withdraw, open the protocol's own points or rewards page and claim only from the link it publishes.", cost: 'no fee to check, and never pay to claim', time: '10 minutes' },
-      { text: 'Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.', cost: 'nothing but the log', time: '5 minutes' }
+      { text: 'Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.', cost: 'nothing but the log', time: '5 minutes' },
+      { text: 'Plan total: $' + capital + ' of capital, ' + txs + ' transactions, over ' + hold + ' days.', cost: 'about ' + gasText + ' of gas in total', time: hold + ' days all in' }
     ].map(stepText);
   }
 
@@ -211,9 +240,11 @@
 
   function podium() {
     var items = DATA.rows.slice(0, 10).map(function (r) {
+      var top = DATA.rows[0].implied_value_usd;
       return el('li', { tabindex: '0', onclick: function () { openDetail(r.slug); }, onkeydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(r.slug); } } },
         el('span', { class: 'rank', text: '#' + r.rank }),
         el('b', { text: r.name }),
+        el('div', { class: 'bar', 'aria-hidden': 'true' }, el('i', { style: 'width:' + Math.max(4, Math.round((r.implied_value_usd / top) * 100)) + '%' })),
         el('span', { class: 'num', text: fmtUsd(r.implied_value_usd) })
       );
     });
@@ -410,6 +441,16 @@
     var steps = farmSteps(row);
     var recomputed = impliedOf(row, BASE);
     var shown = sandboxOn() ? liveImplied(row) : row.implied_value_usd;
+    var base = row.tvl_usd * row.category_multiple;
+    var afterGrowth = base * row.growth_multiplier;
+    var afterMaturity = afterGrowth * row.maturity_multiplier;
+    var afterBreadth = afterMaturity * row.breadth_multiplier;
+    var buildup = el('div', { class: 'buildup' },
+      el('div', null, el('span', { text: 'Base: TVL x category multiple' }), el('b', { class: 'num', text: fmtUsd(base) })),
+      el('div', null, el('span', { text: 'After growth (x' + row.growth_multiplier + ')' }), el('b', { class: 'num', text: fmtUsd(afterGrowth) })),
+      el('div', null, el('span', { text: 'After maturity (x' + row.maturity_multiplier + ')' }), el('b', { class: 'num', text: fmtUsd(afterMaturity) })),
+      el('div', null, el('span', { text: 'After breadth (x' + row.breadth_multiplier + ') = implied value' }), el('b', { class: 'num', text: fmtUsd(afterBreadth) }))
+    );
     dialog.appendChild(el('div', { class: 'detail-head' },
       el('div', null,
         el('span', { class: 'brand-name', text: 'Rank ' + row.rank + ' of ' + DATA.board_size }),
@@ -430,6 +471,7 @@
         el('div', null, el('span', { text: 'Breadth multiplier' }), el('b', { class: 'num', text: String(row.breadth_multiplier) })),
         el('div', null, el('span', { text: 'Implied value' }), el('b', { class: 'num', text: fmtUsd(shown) }))
       ),
+      buildup,
       el('p', { class: 'sub', text: 'Model ' + DATA.model_version + ': the same function scores every protocol. The page recomputes this row as ' + fmtUsd(recomputed) + (recomputed === row.implied_value_usd ? ', the same number board.json carries.' : ', which differs from the board: the data would be stale.') + ' This is an estimate, not a price.' })
     ));
     dialog.appendChild(el('section', { class: 'detail-section' },

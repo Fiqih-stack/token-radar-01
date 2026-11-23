@@ -57,6 +57,8 @@ a { color: var(--accent-2); }
 .podium .rank { font-size: 12px; color: var(--accent); font-weight: 700; }
 .podium b { display: block; font-size: 14px; margin: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .podium .num { color: var(--muted); font-size: 13px; }
+.podium .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 6px 0 4px; }
+.podium .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
 
 /* Controls */
 .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 20px 0 14px; }
@@ -114,6 +116,10 @@ dialog.detail::backdrop { background: rgba(2, 6, 14, .7); }
 .equation div { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
 .equation span { display: block; font-size: 12px; color: var(--muted); }
 .equation b { font-size: 15px; }
+.buildup { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+.buildup div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; }
+.buildup span { font-size: 13px; color: var(--muted); }
+.buildup b { font-size: 14px; }
 .steps { margin: 0; padding-left: 20px; }
 .steps li { margin-bottom: 12px; }
 .steps li b { display: block; font-weight: 600; }
