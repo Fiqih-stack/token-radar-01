@@ -9,7 +9,8 @@
   if (!DATA) return;
   var app = document.getElementById('board');
   var BASE = DATA.model;
-  var state = { q: '', category: 'all', chain: 'all', watch: false, minTvl: 0, tab: 'pre-token', sort: 'implied', dir: -1, selected: null, podiumOpen: true, sandbox: { growth_weight: BASE.growth_weight, maturity_floor: BASE.maturity_floor, breadth_per_chain: BASE.breadth_per_chain } };
+  function defState() { return { q: '', category: 'all', chain: 'all', watch: false, minTvl: 0, tab: 'pre-token', sort: 'implied', dir: -1, selected: null, podiumOpen: true, sandbox: { growth_weight: BASE.growth_weight, maturity_floor: BASE.maturity_floor, breadth_per_chain: BASE.breadth_per_chain } }; }
+  var state = defState();
   var detailTab = 'value';
 
   // Whether any filter is active: the podium heading, the row count and the chips share it.
@@ -191,6 +192,7 @@
   }
 
   function readHash() {
+    state = defState(); detailTab = 'value';
     var hash = window.location.hash.replace(/^#/, '');
     if (!hash) return;
     var params = new URLSearchParams(hash);
@@ -632,7 +634,9 @@
   document.body.appendChild(filterBtn);
   window.addEventListener('scroll', function () {
     var c = document.getElementById('controls');
-    filterBtn.hidden = !c || c.getBoundingClientRect().bottom > 0;
+    var b = document.getElementById('reset-sandbox');
+    var r = b && b.getBoundingClientRect();
+    filterBtn.hidden = !c || c.getBoundingClientRect().bottom > 0 || (r && r.bottom > innerHeight - 59 && r.top < innerHeight && r.right > innerWidth - 105);
   }, { passive: true });
 
   document.querySelectorAll('a.skip').forEach(function (a) {
@@ -654,6 +658,8 @@
     var tf = document.getElementById('detail-tab-farm');
     if (tv) tv.setAttribute('aria-selected', t === 'value' ? 'true' : 'false');
     if (tf) tf.setAttribute('aria-selected', t === 'farm' ? 'true' : 'false');
+    if (tv) tv.tabIndex = t === 'value' ? 0 : -1;
+    if (tf) tf.tabIndex = t === 'farm' ? 0 : -1;
   }
 
   function openDetail(slug) {
@@ -750,6 +756,7 @@
       })),
       el('p', { class: 'note', text: 'A protocol on this board records no token in the snapshot; that is the record, not proof it has none. Never pay to claim an airdrop.' })
     ));
+    setDetailTab(detailTab);
     if (typeof dialog.showModal === 'function') {
       if (!dialog.open) dialog.showModal();
     } else {
@@ -804,6 +811,7 @@
   }
 
   readHash();
+  window.addEventListener('hashchange', function () { readHash(); render(); });
   // Normalise the URL once at load: invalid or unknown params (a bad p, a bad
   // sort, a stray dir) are dropped instead of lingering in the address bar.
   writeHash();
