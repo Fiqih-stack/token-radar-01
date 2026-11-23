@@ -278,8 +278,10 @@ export function isPreToken(p: SnapshotProtocol): boolean {
  * Whether a protocol is one the board may rank: pre-token, and not a wrapped, staked or bridged
  * product of a protocol whose token already trades (WBTC is Bitcoin on Ethereum, a staked-ETH
  * product is ETH in a staking product, a bridge moves a token that already trades). This is the
- * house watchlist's own rule, applied to every row, so the watchlist is the floor and the board
- * never ranks a wrapped product as a launch.
+ * house watchlist's rule as far as the snapshot's ten fields allow: one of its limbs, that
+ * DefiLlama names no parent protocol for it, is not among those fields, so a sub-product the
+ * watchlist leaves out can still rank here as an early row. The watchlist is the floor, never
+ * the ceiling, and the board never ranks a wrapped product as a launch.
  */
 export function isRankable(p: SnapshotProtocol): boolean {
   return (
@@ -365,9 +367,9 @@ function chainOf(p: SnapshotProtocol): string {
 function gasFor(chain: string): number {
   const c = chain.toLowerCase();
   if (c.includes('ethereum')) return 8;
-  if (c.includes('solana')) return 0.01;
+  if (c.includes('solana') || c.includes('hyperliquid')) return 0.01;
   if (c.includes('arbitrum') || c.includes('optimism') || c.includes('base') || c.includes('zksync') || c.includes('blast') || c.includes('scroll')) return 0.5;
-  if (c.includes('bnb') || c.includes('bsc')) return 0.3;
+  if (c.includes('binance') || c.includes('bnb') || c.includes('bsc')) return 0.3;
   if (c.includes('polygon')) return 0.1;
   if (c.includes('avalanche')) return 0.5;
   return 2;
@@ -591,9 +593,18 @@ export function parseSnapshot(text: string): Snapshot {
   };
 }
 
-/** Why a board is not one the gate will take, or null: coverage, ranks, order, one shared implied value, and farm steps. */
+/** Why a board is not one the gate will take, or null: every gate row on the board file. */
 export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null {
+  if (board.length < 100 || board.length > 4000) return `the board has ${board.length} rows, outside the gate's 100..4000`;
   const slugs = new Set(board.map((r) => r.slug));
+  if (slugs.size !== board.length) return 'the board has a duplicate slug';
+  const known = new Set(snapshot.protocols.map((p) => p.slug));
+  for (const r of board) {
+    if (typeof r.slug !== 'string' || r.slug.length < 1 || r.slug.length > 128 || /\s/.test(r.slug)) return `bad slug ${JSON.stringify(r.slug)}`;
+    if (!known.has(r.slug)) return `${r.slug} is not a snapshot protocol`;
+    if (typeof r.name !== 'string' || r.name.trim() === '') return `${r.slug} has no name`;
+    if (!Number.isSafeInteger(r.implied_value_usd) || r.implied_value_usd <= 0 || r.implied_value_usd > 100_000_000_000_000) return `${r.slug} has implied value ${r.implied_value_usd}`;
+  }
   const missing = snapshot.watchlist.filter((s) => !slugs.has(s));
   if (missing.length > 0) return `the board misses ${missing.length} watchlist slug${missing.length === 1 ? '' : 's'}: ${missing.slice(0, 5).join(', ')}`;
   const ranks = board.map((r) => r.rank).sort((a, b) => a - b);
@@ -606,12 +617,11 @@ export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null
     const steps = r.farm_steps;
     if (steps.length < 3 || steps.length > 12) return `${r.slug} has ${steps.length} farm steps`;
     for (const s of steps) if (s.length < 20 || s.length > 600) return `${r.slug} has a farm step of ${s.length} characters`;
-    if (!Number.isSafeInteger(r.implied_value_usd) || r.implied_value_usd <= 0) return `${r.slug} has implied value ${r.implied_value_usd}`;
   }
   return null;
 }
 
 /** A compact data.js: the dashboard's whole dataset as one script, no fetch and no network. */
 export function dataScript(radar: RadarData): string {
-  return `window.RADAR=${JSON.stringify(radar)};\n`;
+  return `window.RADAR=${JSON.stringify(radar).replace(/</g, '\\u003c')};\n`;
 }

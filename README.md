@@ -25,7 +25,7 @@ implied = round( tvl_usd x category_multiple
 A lending protocol is priced like lending protocols trade, a DEX like DEXes trade. No protocol
 name is ever special-cased, and the board covers every rankable pre-token protocol in the snapshot
 (198 rows: the 40-protocol watchlist plus 158 more the radar found, including big protocols the
-watchlist leaves out). The live-token protocols are set aside with their market caps shown, never
+watchlist leaves out). The live-token protocols are set aside with their market caps shown, never mixed into the ranked board.
 
 ## Run it
 
