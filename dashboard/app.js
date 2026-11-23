@@ -11,9 +11,8 @@
   var BASE = DATA.model;
   function defState() { return { q: '', category: 'all', chain: 'all', watch: false, minTvl: 0, tab: 'pre-token', sort: 'implied', dir: -1, selected: null, podiumOpen: true, sandbox: { growth_weight: BASE.growth_weight, maturity_floor: BASE.maturity_floor, breadth_per_chain: BASE.breadth_per_chain } }; }
   var state = defState();
-  var detailTab = 'value';
+  var detailTab = 'value', dirty = false;
 
-  // Whether any filter is active: the podium heading, the row count and the chips share it.
   function filtered() {
     return state.category !== 'all' || state.chain !== 'all' || state.watch || state.minTvl > 0 || state.q.trim() !== '';
   }
@@ -24,10 +23,8 @@
     return state.category !== 'all' || state.chain !== 'all' || state.minTvl > 0 || state.q.trim() !== '';
   }
 
-  // The sort's natural direction: rank 1 and A-to-Z first, everything else biggest first.
   function defaultDir(key) { return key === 'name' || key === 'rank' ? 1 : -1; }
 
-  // A hash number that is in range and on the slider's step, else null.
   function stepValue(raw, min, max, step) {
     if (raw === null || raw === undefined) return null;
     var v = Number(raw);
@@ -397,6 +394,21 @@
     return el('section', { class: 'podium' }, head, state.podiumOpen ? el('ol', null, items) : null);
   }
 
+  // A market fact, not a view: it never follows the filter.
+  function multStrip() {
+    var cm = DATA.category_multiples;
+    var list = Object.keys(cm).sort(function (a, b) { return cm[b].multiple - cm[a].multiple; }).slice(0, 8);
+    return el('section', { class: 'panel dist' },
+      el('h2', { text: 'Highest category multiples (all categories, unfiltered)' }),
+      list.map(function (c) {
+        var m = cm[c].multiple;
+        return el('div', { class: 'row' },
+          el('span', { class: 'n', text: c, title: c }),
+          el('div', { class: 'bar', 'aria-hidden': 'true' }, el('i', { style: 'width:' + Math.max(4, Math.round((m / BASE.multiple_cap) * 100)) + '%' })),
+          el('span', { class: 'num', text: fmtMult(m) }));
+      }));
+  }
+
   function controls() {
     var categories = CATEGORIES;
     var chains = CHAINS;
@@ -447,8 +459,6 @@
     );
   }
 
-  // The active filters as chips: each one clears just that filter, so the reader
-  // never has to rebuild the whole filter set to drop one condition.
   function chips() {
     var list = [];
     if (state.q.trim() !== '') list.push({ label: 'Search: "' + state.q.trim() + '"', clear: function () { state.q = ''; }, focus: 'q' });
@@ -625,10 +635,8 @@
   }
 
   var dialog = el('dialog', { class: 'detail', id: 'detail', 'aria-labelledby': 'detail-title' });
-  dialog.addEventListener('close', function () { state.selected = null; writeHash(); });
+  dialog.addEventListener('close', function () { state.selected = null; writeHash(); if (dirty) { dirty = false; render(); } });
 
-  // A floating way back to the filters: it only appears once the controls have
-  // scrolled out of view, so it never covers the board at the top of the page.
   var filterBtn = el('button', { class: 'filter-fab', type: 'button', text: '↑ Filters', onclick: function () { var c = document.getElementById('controls'); if (c) { c.scrollIntoView({ block: 'start' }); c.focus({ preventScroll: true }); } } });
   filterBtn.hidden = true;
   document.body.appendChild(filterBtn);
@@ -768,7 +776,7 @@
     // The modal blocks the page, so a rebuild while the detail is open would pull
     // the open dialog out of the document and out of the top layer, where
     // showModal is skipped because the dialog still reports itself open.
-    if (dialog.open) return;
+    if (dialog.open) { dirty = true; return; }
     // Keep the user's focus across the rebuild: every control re-renders the whole
     // page, so without this the search box loses focus (and the caret) on each keystroke.
     var focusId = document.activeElement && document.activeElement.id;
@@ -783,6 +791,7 @@
     if (state.tab === 'pre-token') {
       var pod = podium();
       if (pod) shell.appendChild(pod);
+      shell.appendChild(multStrip());
     }
     shell.appendChild(controls());
     var ch = chips();
